@@ -11,11 +11,13 @@ module NormalFroms (Name,
                     toCNF) where
 
 import Data.List (union, nub)
+import Data.Maybe (fromJust)
 import Control.Monad.State (State, get, modify, evalState)
 
 type Name = String
 type Value = Bool
 
+-- Class for expression and operator priorities
 data Expr = Top
           | Bot
           | Var Name        -- priority
@@ -40,6 +42,7 @@ instance Show Expr where
     showsPrec contextPrec (Impl a b) = let curPrec = 1 in showParen (contextPrec > curPrec) $ showsPrec curPrec a . showString " -> " . showsPrec curPrec b
     showsPrec contextPrec (RImpl a b) = let curPrec = 1 in showParen (contextPrec > curPrec) $ showsPrec curPrec a . showString " <- " . showsPrec curPrec b
 
+-- Extract list of variable names from expression
 variableList :: Expr -> [Name]
 variableList Top = []
 variableList Bot = []
@@ -52,6 +55,7 @@ variableList (Iff a b) = union (variableList a) (variableList b)
 variableList (Impl a b) = union (variableList a) (variableList b)
 variableList (RImpl a b) = union (variableList a) (variableList b)
 
+-- Evaluate expression using specified interpretation
 eval :: [(Name, Value)] -> Expr -> Value
 eval _ Top = True
 eval _ Bot = False
@@ -59,8 +63,7 @@ eval interp (Var x) = let res = lookup x interp in
                                 if (res == Nothing) then
                                     error ("Variable " ++ show x ++ " is not in interpretation list")
                                 else
-                                    let (Just val) = res in
-                                        val
+                                    fromJust res
 eval interp (Not e) = not (eval interp e)
 eval interp (Or a b) = eval interp a || eval interp b
 eval interp (And a b) = eval interp a && eval interp b
@@ -69,6 +72,9 @@ eval interp (Iff a b) = eval interp a == eval interp b
 eval interp (Impl a b) = not (eval interp a) || eval interp b
 eval interp (RImpl a b) = eval interp a || not (eval interp b)
 
+-- Transform expression into equivalent, but
+-- with only Not, Or, And, Top and Bot nodes
+-- (rewrite Xor, Iff, ... with Not, Or, And)
 reduceOperators :: Expr -> Expr
 reduceOperators Top = Top
 reduceOperators Bot = Bot
@@ -85,6 +91,7 @@ reduceOperators (Impl a b) = let x = reduceOperators a
 reduceOperators (RImpl a b) = let x = reduceOperators a
                                   y = reduceOperators b in Or x (Not y)
 
+-- Transform expression to NNF form
 toNNF :: Expr -> Expr
 toNNF e = convertToNNF False (reduceOperators e) where
     convertToNNF :: Bool -> Expr -> Expr
@@ -96,6 +103,9 @@ toNNF e = convertToNNF False (reduceOperators e) where
     convertToNNF invert (And a b) = if (invert) then Or (convertToNNF True a) (convertToNNF True b) else And (convertToNNF False a) (convertToNNF False b)
     convertToNNF invert _ = error "There must be only literals, or, and, not"
 
+-- Function to build clauses like
+-- Or (Or (Var "a") (Var "b")) (Or (Var "c") (Var "d")) or like
+-- And (And (Var "a") (Var "b")) (And (Var "c") (Var "d"))
 buildClauseFromListOfLiterals :: (Expr -> Expr -> Expr) -> [Expr] -> Expr
 buildClauseFromListOfLiterals _ [] = error "List of variables can't be empty"
 buildClauseFromListOfLiterals _ [Top] = Top
@@ -109,6 +119,7 @@ buildClauseFromListOfLiterals operation ((Var x) : t) = operation (Var x) (build
 buildClauseFromListOfLiterals operation ((Not (Var x)) : t) = operation (Not (Var x)) (buildClauseFromListOfLiterals operation t)
 buildClauseFromListOfLiterals _ (_ : t) = error "There can be only literals in clause list"
 
+-- Transform expression to DNF form
 toDNF :: Expr -> Expr
 toDNF e = buildDNFFromClauses (getClausesForDNF (toNNF e)) where
     getClausesForDNF :: Expr -> [[Expr]]
@@ -122,27 +133,23 @@ toDNF e = buildDNFFromClauses (getClausesForDNF (toNNF e)) where
     getClausesForDNF _ = error "There must be only literals, or, and, not"
 
     buildDNFFromClauses :: [[Expr]] -> Expr
-    buildDNFFromClauses list = helper (nub (map nub list)) where
+    buildDNFFromClauses list = helper (nub (map nub list)) where -- removing duplicates
         helper :: [[Expr]] -> Expr
         helper [] = error "List of clauses can't be empty"
         helper [clause] = buildClauseFromListOfLiterals And clause
         helper (clause : t) = Or (buildClauseFromListOfLiterals And clause) (helper t)
 
+-- Transform expression to NNF form
 toCNF :: Expr -> Expr
 toCNF e = buildCNFFromClauses (getClausesForCNF e) where
+    -- Using State monad to create new temp variables
     getNewTmpVar :: State Int Expr
     getNewTmpVar = do
         modify (+ 1)
         n <- get
         return (Var ("_" ++ show n))
 
-    templateTseitinTransformation :: (Expr -> Expr -> Expr) -> Expr -> Expr -> State Int ([Expr], Expr)
-    templateTseitinTransformation operation a b = do
-        newVar <- getNewTmpVar
-        (listA, lastVarA) <- tseitinTransformation a
-        (listB, lastVarB) <- tseitinTransformation b
-        return ([Iff newVar (operation lastVarA lastVarB)] ++ listA ++ listB, newVar)
-
+    -- Doing Tseitin transformation of an expression
     tseitinTransformation :: Expr -> State Int ([Expr], Expr)
     tseitinTransformation Top = do
         newVar <- getNewTmpVar
@@ -163,6 +170,23 @@ toCNF e = buildCNFFromClauses (getClausesForCNF e) where
     tseitinTransformation (Impl a b) = templateTseitinTransformation Impl a b
     tseitinTransformation (RImpl a b) = templateTseitinTransformation RImpl a b
 
+    -- Since transformations for all binary operators look very similar
+    -- we can create a template for them
+    templateTseitinTransformation :: (Expr -> Expr -> Expr) -> Expr -> Expr -> State Int ([Expr], Expr)
+    templateTseitinTransformation operation a b = do
+        newVar <- getNewTmpVar
+        (listA, lastVarA) <- tseitinTransformation a
+        (listB, lastVarB) <- tseitinTransformation b
+        return ([Iff newVar (operation lastVarA lastVarB)] ++ listA ++ listB, newVar)
+
+    -- After Tseitin transformation we have a list of formulas like
+    -- x == (a -> b)
+    -- x == ~y
+    -- y == z | t
+    -- ...
+    -- Each formula has not more than 5 variables,
+    -- so CNFs for all this formulas can be precalculated.
+    -- Here there are hardcoded CNFs for all possible formulas
     getClausesForSimpleCNF :: Expr -> [[Expr]]
     getClausesForSimpleCNF (Iff (Var x) Top) = [[Var x]]
     getClausesForSimpleCNF (Iff (Var x) Bot) = [[Not (Var x)]]

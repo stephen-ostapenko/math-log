@@ -8,6 +8,7 @@ import Data.Maybe
 
 -- === Common ===
 
+-- Generate all True/False sequences with length n
 genAllBinarySequences :: Int -> [[Value]]
 genAllBinarySequences 0 = [[]]
 genAllBinarySequences n = gen (n - 1) [[False], [True]] where
@@ -21,6 +22,9 @@ assertEq expected actual = if (expected == actual) then
     else
         error ("Assertion failed!\nExpected " ++ show expected ++ ", but found " ++ show actual)
 
+-- Function to check if expressions are equivalent.
+-- Generates all possible interpretations and checks
+-- if expressions evaluate into same Value
 infixl 4 ~~
 (~~) :: Expr -> Expr -> Bool
 a ~~ b = let vars = union (variableList a) (variableList b)
@@ -30,6 +34,9 @@ a ~~ b = let vars = union (variableList a) (variableList b)
                  eqEvals vars vals = let interp = zip vars vals in
                                          eval interp a == eval interp b
 
+-- Function to check if expression is satisfyable.
+-- Generates all possible interpretations and checks
+-- if expression evaluates to truth
 checkSat :: Expr -> Maybe [(Name, Value)]
 checkSat e = let vars = variableList e
                  vals = genAllBinarySequences (length vars) in
@@ -42,19 +49,23 @@ checkSat e = let vars = variableList e
                                                        else
                                                            checkInterp vars t
 
+-- Function to check if expressions are equisatisfyable
 infixl 4 `eqSat`
 eqSat :: Expr -> Expr -> Bool
 ini `eqSat` ext = isJust (checkSat ini) == isJust (checkSat ext) where
 
+-- Function to invoke list of unit-tests
 invokeTests :: [Bool] -> [Bool]
 invokeTests [] = []
 invokeTests (a : t) = let result = a in seq a a : invokeTests t
 
+-- Function to invoke test group
 runTestGroup runGroup = do
     let res = runGroup
     putStrLn $ show res
     putStrLn ("All " ++ show (length res) ++ " tests passed!\n")
 
+-- Main function. Invokes all tests
 runTests = do
     putStrLn "\n===================================================================================\n"
     putStrLn "Testing (~~)"
@@ -76,6 +87,8 @@ runTests = do
     putStrLn "Testing toCNF"
     runTestGroup testToCNF
     putStrLn "All test groups passed!\n"
+
+-- List of unit-tests below
 
 -- === test (~~) ===
 
@@ -262,6 +275,8 @@ testEval9 = let f = Xor (Impl (Var "a") (Not (Var "b"))) (RImpl (Var "b") (Var "
 
 -- === testReduceOperators ===
 
+-- Check if expression is reduced
+-- (consists of only Not, Or, And, Top and Bot nodes)
 isReduced :: Expr -> Bool
 isReduced Top = True
 isReduced Bot = True
@@ -303,6 +318,7 @@ testReduceOperators7 = let f = And (And (Iff (Var "a") (Var "b")) (Iff (Var "b")
 
 -- === testToNNF ===
 
+-- Check if expression is in NNF
 isInNNF :: Expr -> Bool
 isInNNF Top = True
 isInNNF Bot = True
@@ -365,6 +381,7 @@ testToNNF12 = let f = And (Or (And (Not (Var "a")) (Var "b")) (Or (Var "a") (Not
 
 -- === testToDNF ===
 
+-- Check if expression is in DNF
 isInDNF :: Expr -> Bool
 isInDNF = helper False where
     helper :: Bool -> Expr -> Bool
@@ -450,6 +467,7 @@ testToDNF17 = let f = And (And (Iff (Var "a") (Var "b")) (Iff (Var "b") (Var "c"
 
 -- === testToCNF ===
 
+-- Check if expression is in CNF
 isInCNF :: Expr -> Bool
 isInCNF = helper False where
     helper :: Bool -> Expr -> Bool
