@@ -69,13 +69,14 @@ try:
 	out.close()
 
 	# Calling SAT solver and writing the result into temp file called ".result"
-	retCode = subprocess.call(f"{SCRIPT_PATH}/{PATH_TO_SAT_SOLVER} -w .result -q .cnf", shell = True)
-	if (retCode != 10 and retCode != 20):
-		raise RuntimeError("Solver not found!")
+	ret_code = subprocess.call(f"{SCRIPT_PATH}/{PATH_TO_SAT_SOLVER} -w .result -q .cnf", shell = True)
+	if (ret_code != 10 and ret_code != 20):
+		raise RuntimeError("Solver not found or crashed!")
 
 	# Reading data from file ".result"
 	res = open(".result", "r")
 	lines = list(filter(lambda s: s, res.read().split("\n")))
+	res.close()
 
 	# Parsing result of satisfiability check
 	def get_sat_result(lines):
@@ -95,11 +96,11 @@ try:
 	def get_var_values(lines):
 		values = [False] * (n * n + 1)
 		for line in lines[1:]:
-			spLine = line.split()
-			if (spLine[0] != "v"):
+			sp_line = line.split()
+			if (sp_line[0] != "v"):
 				raise RuntimeError("Unknown error!")
 
-			for lit in spLine[1:]:
+			for lit in sp_line[1:]:
 				var = abs(int(lit))
 				if (int(lit) > 0):
 					values[var] = True
@@ -123,3 +124,5 @@ except RuntimeError as e:
 
 finally:
 	os.system("rm .cnf .result")
+	out.close()
+	res.close()
