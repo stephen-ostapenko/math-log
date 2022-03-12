@@ -2,9 +2,13 @@
 
 import sys
 import os
+import subprocess
 
 try:
-	# Here must be path to Cadical SAT solver
+	# Get script location
+	SCRIPT_PATH = sys.path[0]
+
+	# Here must be relative path from this script to Cadical SAT solver
 	PATH_TO_SAT_SOLVER = "cadical/cadical"
 
 	args = sys.argv
@@ -65,7 +69,9 @@ try:
 	out.close()
 
 	# Calling SAT solver and writing the result into temp file called ".result"
-	os.system(f"{PATH_TO_SAT_SOLVER} -w .result -q .cnf")
+	retCode = subprocess.call(f"{SCRIPT_PATH}/{PATH_TO_SAT_SOLVER} -w .result -q .cnf", shell = True)
+	if (retCode != 10 and retCode != 20):
+		raise RuntimeError("Solver not found!")
 
 	# Reading data from file ".result"
 	res = open(".result", "r")
